@@ -1,7 +1,3 @@
----
-theme: 'dracula'
-title: 'App Locker'
----
 
 # App Locker
 

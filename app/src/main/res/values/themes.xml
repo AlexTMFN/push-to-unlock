@@ -1,0 +1,30 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme force amoled black. -->
+    <style name="Theme.Pushups_locker" parent="Theme.Material3.Dark.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/accent_red</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimaryContainer">@color/accent_red_dark</item>
+        <item name="colorOnPrimaryContainer">@color/white</item>
+
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/amoled_surface_elevated</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <!-- Background and Surface -->
+        <item name="android:windowBackground">@color/amoled_black</item>
+        <item name="colorSurface">@color/amoled_surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorSurfaceVariant">@color/amoled_surface_elevated</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+
+        <!-- System bars -->
+        <item name="android:statusBarColor">@color/amoled_black</item>
+        <item name="android:navigationBarColor">@color/amoled_black</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+
+        <!-- Remove ripple purple/blue artifacts -->
+        <item name="colorControlHighlight">#33FFFFFF</item>
+    </style>
+</resources>

@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Reference: Boy doing pushups silhouette -->
+    <path
+        android:fillColor="#FF3B30"
+        android:pathData="M24,78h60v6H24zM54,32c3.3,0 6,-2.7 6,-6s-2.7,-6 -6,-6s-6,2.7 -6,6S50.7,32 54,32zM88,54l-16,-8c-1.5,-0.7 -3.2,-0.7 -4.7,0l-13.3,6.7L40.7,46c-1.5,-0.7 -3.2,-0.7 -4.7,0l-16,8v12h6v-8.3l12,-6l8,12l8,-12l12,6V66h6V54z" />
+</vector>

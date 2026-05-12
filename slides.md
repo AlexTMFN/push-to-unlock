@@ -1,181 +1,134 @@
 ---
-layout: intro
+theme: 'dracula'
+title: 'App Locker'
 ---
 
-# Pushups Locker
+# App Locker
 
-O prezentare tehnică aprofundată
-
----
-layout: default
----
-
-# Ce este Pushups Locker?
-
-**Pushups Locker** este o aplicație Android care blochează alte aplicații după o anumită perioadă de utilizare și solicită utilizatorului să execute un număr stabilit de flotări pentru a le debloca.
-
-- **Scop:** Încurajează activitatea fizică prin limitarea timpului petrecut în aplicații.
-- **Funcționalitate cheie:**
-    - Selectarea și configurarea aplicațiilor de blocat.
-    - Monitorizarea utilizării aplicațiilor în fundal.
-    - Detectarea flotărilor în timp real folosind camera frontală și ML (Machine Learning).
+A presentation by:
+- VOICU MARIO-CRISTIAN
+- TUDOR CONSTANTIN-ALIN
+- CHIRCEF DAN-ALEXANDRU
+- POSPAI ALEXANDRU
+- ZOTA ANDREI
 
 ---
-layout: default
----
 
-# Arhitectura Generală
+# Motivația Alegerii Aplicației
 
-Aplicația este compusă din trei componente principale care lucrează împreună:
+- **1. Combaterea sedentarismului**
+  - Utilizatorii petrec ore în șir pe social media (Instagram, TikTok). Prin condiționarea accesului de efectuarea unor flotări, transformi un obicei pasiv într-unul activ.
 
-1.  **UI Principal (`MainActivity`)**
-    - Interfața pentru configurarea aplicației. Aici utilizatorii aleg ce aplicații să blocheze și stabilesc regulile (limită de timp, număr de flotări).
-
-2.  **Serviciu de Monitorizare (`LockerService`)**
-    - Un serviciu care rulează în fundal și urmărește ce aplicație este în prim-plan. Când o aplicație blocată depășește limita de timp, lansează ecranul de blocare.
-
-3.  **Ecran de Blocare (`LockerActivity`)**
-    - Preia controlul ecranului, activează camera și folosește ML Kit pentru a număra flotările. După finalizarea exercițiului, deblochează aplicația.
+- **2. Gamificarea disciplinei**
+  - Spre deosebire de un App Locker clasic care cere doar un PIN, acesta impune o barieră de efort. Dacă vrei neapărat să intri pe Facebook, trebuie să plătești cu efort fizic.
 
 ---
-layout: default
----
 
-# Componenta Cheie: `MainActivity.kt`
+# Aplicații Similare și Studiul Pieței
 
-Acesta este panoul de control al aplicației.
+## Analiza concurenței (Exemple relevante):
 
-- Afișează lista tuturor aplicațiilor instalate folosind un `RecyclerView`.
-- Permite activarea/dezactivarea blocării pentru fiecare aplicație.
-- Deschide un dialog (`AlertDialog`) pentru a configura **limita de timp** și **numărul de flotări**.
-- Gestionează solicitarea permisiunilor necesare:
-    - `USAGE_STATS`: Pentru a vedea ce aplicație rulează (`UsageStatsManager`).
-    - `SYSTEM_ALERT_WINDOW`: Pentru a afișa ecranul de blocare (`Settings.canDrawOverlays`).
-    - `CAMERA`: Pentru detectarea flotărilor.
-- Pornește și oprește `LockerService` printr-un `FloatingActionButton`.
+- **PushUp Time / PushUpLock:** Aplicații care blochează accesul la social media până când utilizatorul face un set de flotări. Folosesc camera (AI) sau senzorul de proximitate pentru numărare.
+
+- **Fitlock / StepBloc:** Se bazează pe obiective de fitness generale (ex: trebuie să faci 5000 de pași ca să deblochezi YouTube pentru 15 minute).
+
+- **AppDetox / StayFocused:** App lockere clasice care folosesc doar limite de timp sau parole, fără componentă de efort fizic (lipsesc elementul de gamificare a sănătății).
 
 ---
-layout: default
----
 
-# Componenta Cheie: `LockerService.kt`
+# Cerințele și Funcționalitățile Aplicației
 
-Motorul de monitorizare al aplicației.
+- **Selectarea aplicațiilor protejate:** O listă cu toate aplicațiile instalate de unde utilizatorul alege pe care dorește să le blocheze (ex: Instagram, TikTok, Facebook).
 
-- Rulează ca un `Foreground Service` pentru a preveni închiderea sa de către sistem.
-- Utilizează `UsageStatsManager.queryEvents` pentru a detecta eficient aplicația din prim-plan la fiecare secundă.
-- Menține un cronometru individual pentru fiecare aplicație blocată, salvat în `SharedPreferences`.
-- Când timpul expiră, lansează `LockerActivity` cu detaliile blocării.
-- Afișează o notificare persistentă cu starea curentă (ex: "Timp rămas pentru YouTube: 04:32").
-- Folosește un `BroadcastReceiver` pentru a primi semnalul de deblocare de la `LockerActivity`.
+- **Interfața de blocare (Overlay):** O fereastră care apare automat peste aplicația restricționată și care afișează numărul de flotări necesar.
+
+- **Contorizare în timp real:** Detectarea automată a flotărilor (fără a atinge ecranul cu mâna).
 
 ---
-layout: default
----
 
-# Deep Dive: Algoritmul de Detecție (1/3)
+# Prototipul Grafic (Mock-up)
 
-Cum transformăm un video într-un număr de flotări?
+## Ecranul Principal — „Push to Unlock” (Dashboard)
 
-### Inițializare & Configurare
-- Se folosește **ML Kit Pose Detection API** (`com.google.mlkit:pose-detection-accurate`).
-- Detectorul este configurat pentru performanță în timp real:
-    - `AccuratePoseDetectorOptions.STREAM_MODE`: Optimizează pentru analiza cadrelor succesive dintr-un video.
-- Fiecare cadru de la `CameraX` este transformat într-un `InputImage` și trimis detectorului.
-
-### Validarea Datelor
-- **Pragul de încredere (Confidence Threshold):** Pentru fiecare punct cheie (umar, cot etc.), algoritmul verifică `landmark.inFrameLikelihood`. Se iau în calcul doar punctele cu o încredere de peste `0.6f`.
-- **Mesaje de ghidare:** Dacă punctele esențiale (ex: umerii, coatele) nu sunt vizibile, utilizatorul este ghidat prin mesaje pe ecran, cum ar fi "Make sure your upper body is visible".
+- **Header:** Afișează titlul aplicației și un buton de resetare a progresului.
+- **Statistici:** Prezintă clar trei indicatori numerici mari: totalul de flotări efectuate, numărul de aplicații deblocate și numărul de aplicații încă blocate.
+- **Lista aplicațiilor blocate:** Pentru fiecare aplicație (Instagram, TikTok, YouTube, etc.) sunt afișate:
+  - Numele aplicației.
+  - Numărul de flotări rămase necesare (ex: "10 more needed").
+  - O bară de progres (0/10).
+  - Un buton etichetat “Do Push-ups" care permite utilizatorului să înceapă antrenamentul pentru acea aplicație specifică.
 
 ---
-layout: default
----
 
-# Deep Dive: Algoritmul de Detecție (2/3)
+# Prototipul Grafic (Mock-up)
 
-### Alinierea și Poziționarea
-Algoritmul trebuie să înțeleagă cum este poziționat utilizatorul față de cameră.
+## Ecranul de Setări — „App Settings”
 
-1.  **Detecția Vederii (Frontală vs. Laterală):**
-    - Se calculează lățimea umerilor (`dist(lS, rS)`).
-    - Se calculează lungimea aproximativă a trunchiului (`dist(umar, sold)`).
-    - Dacă `lățimea umerilor < lungimea trunchiului * 0.7`, se consideră **vedere laterală**. Altfel, este **vedere frontală**. Această distincție este crucială pentru a alege ce reguli să aplici.
-
-2.  **Verificarea Poziției de Plank:**
-    - În **vedere laterală**, corpul trebuie să fie orizontal. Se verifică dacă `dy` (diferența pe verticală între umăr și șold) nu este mult mai mare decât `dx`.
-    - În **vedere frontală**, umerii trebuie să fie la același nivel. Se verifică panta dintre umeri.
-    - Dacă aceste condiții nu sunt îndeplinite, starea rămâne `NEEDS_ALIGNMENT` și utilizatorul este ghidat.
+- **Descriere:** Un subtitlu explicativ menționează că utilizatorul poate selecta ce aplicații să fie blocate și poate seta câte flotări sunt necesare pentru fiecare.
+- **Toggles și Controale:** Pentru fiecare aplicație (Instagram, TikTok, etc.) există:
+  - Un **switch (toggle)** pentru a activa/dezactiva blocarea acelei aplicații.
+  - Afișarea progresului curent (ex: "0/10 push-ups completed").
+  - Un **selector numeric (stepper)** etichetat “Push-ups: 10” care permite utilizatorului să crească sau să scadă numărul de repetări necesare pentru deblocare.
 
 ---
-layout: two-cols
----
 
-# Deep Dive: Algoritmul de Detecție (3/3)
+# Prototipul Grafic (Mock-up)
 
-::left::
+## Ecranul de Scanare — „Camera Access Required / Tracker”
 
-### Mașina de Stări (State Machine)
-Numărarea se face printr-o mașină de stări simplă, bazată pe unghiul coatelor.
-
-- **Stări Posibile:** `NEEDS_ALIGNMENT`, `READY_UP`, `DOWN_POSITION`.
-
-- **Calcul Unghi:** Se folosește `atan2` pe coordonatele umărului, cotului și încheieturii pentru a calcula unghiul cotului.
-
-- **Tranziții:**
-    - `NEEDS_ALIGNMENT` -> `READY_UP`
-        - Când: Unghiul coatelor > 155° (brațe drepte).
-    - `READY_UP` -> `DOWN_POSITION`
-        - Când: Unghiul < 100° (flexare).
-    - `DOWN_POSITION` -> `READY_UP`
-        - Când: Unghiul > 155° (întindere).
-        - **Acțiune: Se numără o flotare!**
-
-::right::
-
-```mermaid
-graph TD
-    A(Start: NEEDS_ALIGNMENT) -- Brațe drepte (>155°) --> B(Poziție Sus: READY_UP);
-    B -- Coboară (<100°) --> C(Poziție Jos: DOWN_POSITION);
-    C -- Ridică (>155°)<br/><b>Numără +1</b> --> B;
-```
+- **Stare Eroare:** Afișează un mesaj vizibil "Camera Access Denied", împreună cu instrucțiuni pas cu pas despre cum să activeze permisiunile camerei în browser, în cazul în care accesul nu a fost acordat.
+- **Vizualizare Tracker:** În partea centrală, un pătrat mare (cadru video) simulează camera activă, având inscripționat textul "Get into position".
+- **Ghidaj Utilizator:** Sub cadrul video, există instrucțiuni text care îl sfătuiesc pe utilizator să se poziționeze astfel încât întregul corp să fie vizibil în cadru, asigurând o detecție corectă a flotărilor. Un buton "Go Back" permite revenirea la ecranul principal.
 
 ---
-layout: default
----
 
-# Instalare și Permisiuni
+# Marketingul si Monetizarea
 
-Aplicația va fi distribuită ca un fișier **APK**.
+## 1. Freemium – Funcționalități de bază gratuite, premium pe abonament
 
-1.  **Transferă și instalează fișierul APK** pe dispozitivul tău Android.
-    - *Va trebui probabil să acorzi permisiunea de a instala aplicații din surse necunoscute.*
+- **Gratuit:**
+  - Blocarea a maxim 3 aplicații
+  - Setarea unui număr fix de flotări (ex: doar 10 per aplicație)
+  - Tracking de bază cu camera
 
-2.  **Rulează pe un dispozitiv fizic.**
-    - *Emulatorul nu va funcționa corect deoarece necesită o cameră reală pentru a detecta o persoană.*
-
-3.  **Acordă permisiunile critice** (aplicația te va ghida):
-    - **Usage Access** (Acces la utilizare).
-    - **Display over other apps** (Afișare peste alte aplicații).
-    - **Camera**.
-    - **Ignore Battery Optimizations** (Ignorare optimizări baterie).
-
----
-layout: default
----
-
-# Configurare și Start
-
-După ce aplicația este instalată și permisiunile sunt acordate:
-
-1.  **Deschide aplicația Pushups Locker.**
-2.  **Activează blocarea** pentru una sau mai multe aplicații din listă folosind comutatorul.
-3.  **(Opțional)** Apasă pe o aplicație pentru a-i configura **limita de timp** și **numărul de flotări**.
-4.  **Apasă butonul "Start Service"** din partea de jos a ecranului.
-
-Serviciul de monitorizare va porni și va rula în fundal. Pictograma sa va fi vizibilă în bara de notificări.
+- **Premium (abonament lunar/anual):**
+  - Număr nelimitat de aplicații blocate
+  - Setare personalizată a numărului de flotări per aplicație
+  - Statistici avansate (istoric zilnic/săptămânal, calorii arse, streak-uri)
+  - Teme și personalizare interfață
+  - Sincronizare între multiple dispozitive
+  - Export date de antrenament
 
 ---
-layout: center
+
+# Marketingul si Monetizarea
+
+## 2. Achiziții în aplicație (One-time purchases)
+
+### Pachete de funcționalități:
+- **Unlock All Apps Pack:** $4.99 – elimină limita de aplicații blocate
+- **Custom Goals Pack:** $2.99 – permite setarea numărului personalizat de flotări
+- **Statistics Pack:** $1.99 – deblochează statistici avansate și grafice
+- **Themes Pack:** $0.99 per temă - teme vizuale premium
+
+**Avantaj:** Utilizatorii plătesc o singură dată, fără angajament lunar.
+
 ---
 
-# Întrebări?
+# ADS
+
+| Tip reclamă | Locație | Monetizare |
+|---|---|---|
+| **Banner ads** | Partea de jos a ecranului principal și a ecranului de setări | CPM scăzut, dar constant |
+| **Interstitial ads** | După finalizarea unei sesiuni de flotări (la deblocarea aplicației) | CPM mediu, moment de tranziție natural |
+| **Rewarded video ads** | Utilizatorul poate viziona un anunț pentru a reduce numărul de flotări necesar (ex: 30 secunde de reclamă = -3 flotări) | CPM ridicat, utilizatorii aleg activ să vizioneze |
+| **Native ads** | În lista de aplicații blocate, ca sugestie de „apps to help you stay focused” | CPM mediu, mai puțin intruzive |
+
+---
+
+# Webliografie
+
+## Studiu de Piață și Concepte (Aplicații Similare)
+
+- **Google Play Store – Health & Fitness Apps:**
+  [https://play.google.com/store/apps/category/HEALTH_AND_FITNESS](https://play.google.com/store/apps/category/HEALTH_AND_FITNESS)

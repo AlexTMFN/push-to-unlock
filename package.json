@@ -1,1 +1,5 @@
-{}
+{
+  "dependencies": {
+    "slidev-theme-dracula": "^0.2.0"
+  }
+}

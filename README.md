@@ -14,6 +14,16 @@ A presentation by:
 
 ---
 
+# Despre Această Prezentare
+
+Această prezentare a fost creată cu [Slidev](https://sli.dev/).
+
+## Cum se rulează
+1. Instalează dependențele: `npm install`
+2. Pornește prezentarea: `npx slidev`
+
+---
+
 # Motivația Alegerii Aplicației
 
 - **1. Combaterea sedentarismului**

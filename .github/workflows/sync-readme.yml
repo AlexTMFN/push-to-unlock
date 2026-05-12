@@ -1,0 +1,22 @@
+name: Sync README with slides
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Sync slides.md to README.md
+        run: cp slides.md README.md
+
+      - name: Commit and push if README.md changed
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "docs: Auto-sync README.md from slides.md"
+          file_pattern: README.md

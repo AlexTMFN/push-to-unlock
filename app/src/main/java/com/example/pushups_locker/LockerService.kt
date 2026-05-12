@@ -24,8 +24,9 @@ class LockerService : Service() {
     
     private var lastRealAppPackage: String? = null
     private var lastRealAppName: String? = null
-    private var isCurrentlyInForeground: Boolean = false
+    private var isAppInForeground: Boolean = false
     
+    // Memory cache for app timers: packageName -> secondsLeft
     private val appTimers = mutableMapOf<String, Int>()
     private var isCurrentlyLocked = false
     
@@ -38,7 +39,7 @@ class LockerService : Service() {
             if (intent?.action == "com.example.pushups_locker.UNLOCKED") {
                 val packageName = intent.getStringExtra("package_name")
                 if (packageName != null) {
-                    Log.d("LockerService", "Unlocking package: $packageName")
+                    Log.d("LockerService", "Resetting timer after unlock for: $packageName")
                     resetTimerForApp(packageName)
                     isCurrentlyLocked = false
                     updateNotification()
@@ -51,7 +52,7 @@ class LockerService : Service() {
         override fun run() {
             try {
                 checkForegroundApp()
-                updateNotification()
+                updateTimerAndNotification()
             } catch (e: Exception) {
                 Log.e("LockerService", "Error in monitor loop", e)
             }
@@ -64,7 +65,7 @@ class LockerService : Service() {
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         launcherPackage = getLauncherPackageName()
         createNotificationChannel()
-        loadAllTimers()
+        loadAllTimersFromPrefs()
         
         val filter = IntentFilter("com.example.pushups_locker.UNLOCKED")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -102,45 +103,41 @@ class LockerService : Service() {
             }
         }
 
-        if (topPackage == null || topPackage == "com.android.systemui") {
-            val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, time - 2000, time)
-            if (stats != null && stats.isNotEmpty()) {
-                val sortedStats = stats.sortedByDescending { it.lastTimeUsed }
-                for (s in sortedStats) {
-                    if (s.packageName != "com.android.systemui" && 
-                        s.packageName != "android" && 
-                        s.packageName != packageName) {
-                        topPackage = s.packageName
-                        break
-                    }
+        // Essential Fix: Only pause if it's explicitly the Launcher or an app that ISN'T SystemUI
+        // Being in SystemUI (notification shade) should NOT change the 'isAppInForeground' state 
+        // if we were already in a blocked app.
+        if (topPackage != null) {
+            val isLauncher = topPackage == launcherPackage || 
+                             topPackage == "com.google.android.nexuslauncher" ||
+                             topPackage == "com.google.android.googlequicksearchbox" ||
+                             topPackage == "com.android.launcher3"
+
+            val isSystemUI = topPackage == "com.android.systemui" || topPackage == "android"
+            val isOurs = topPackage == packageName
+
+            if (isLauncher) {
+                isAppInForeground = false
+            } else if (!isSystemUI && !isOurs) {
+                // It's a real 3rd party app
+                if (topPackage != lastRealAppPackage) {
+                    lastRealAppPackage = topPackage
+                    lastRealAppName = getAppNameFromPackage(topPackage)
+                    ensureTimerExists(topPackage)
                 }
+                isAppInForeground = true
             }
+            // If it is SystemUI or our app, we do NOT change isAppInForeground.
+            // This ensures the timer keeps running if the user opens the shade while in Instagram.
         }
+    }
 
-        if (topPackage == null) return
-
-        val isSystemUI = topPackage == "com.android.systemui" || topPackage == "android"
-        val isLauncher = topPackage == launcherPackage || 
-                         topPackage == "com.google.android.nexuslauncher" ||
-                         topPackage == "com.google.android.googlequicksearchbox"
-
-        if (isLauncher) {
-            isCurrentlyInForeground = false
-        } else if (!isSystemUI && topPackage != packageName) {
-            if (topPackage != lastRealAppPackage) {
-                lastRealAppPackage = topPackage
-                lastRealAppName = getAppNameFromPackage(topPackage)
-                ensureTimerExists(topPackage)
-            }
-            isCurrentlyInForeground = true
-        }
-
-        if (!isCurrentlyLocked && isCurrentlyInForeground && lastRealAppPackage != null) {
+    private fun updateTimerAndNotification() {
+        if (lastRealAppPackage != null && isAppInForeground && !isCurrentlyLocked) {
             val timeLeft = appTimers[lastRealAppPackage!!] ?: -1
             if (timeLeft > 0) {
                 val newTime = timeLeft - 1
                 appTimers[lastRealAppPackage!!] = newTime
-                saveCurrentTimer(lastRealAppPackage!!, newTime)
+                saveTimerToPrefs(lastRealAppPackage!!, newTime)
                 
                 if (newTime <= 0) {
                     isCurrentlyLocked = true
@@ -151,6 +148,8 @@ class LockerService : Service() {
                 lockApp(lastRealAppPackage!!)
             }
         }
+        
+        updateNotification()
     }
 
     private fun getAppNameFromPackage(packageName: String): String {
@@ -170,11 +169,13 @@ class LockerService : Service() {
             val configJson = JSONObject(configStr)
             
             if (configJson.has(packageName)) {
-                val savedTimer = prefs.getInt("timer_$packageName", -1)
-                if (savedTimer != -1) {
-                    appTimers[packageName] = savedTimer
+                // Try to load current progress first, otherwise load initial limit
+                val savedProgress = prefs.getInt("timer_$packageName", -1)
+                if (savedProgress != -1) {
+                    appTimers[packageName] = savedProgress
                 } else {
-                    appTimers[packageName] = configJson.getJSONObject(packageName).optInt("timeLimit", 300)
+                    val limit = configJson.getJSONObject(packageName).optInt("timeLimit", 300)
+                    appTimers[packageName] = limit
                 }
             }
         }
@@ -188,17 +189,17 @@ class LockerService : Service() {
         if (configJson.has(packageName)) {
             val initialSeconds = configJson.getJSONObject(packageName).optInt("timeLimit", 300)
             appTimers[packageName] = initialSeconds
-            saveCurrentTimer(packageName, initialSeconds)
+            saveTimerToPrefs(packageName, initialSeconds)
         }
     }
 
-    private fun saveCurrentTimer(packageName: String, seconds: Int) {
+    private fun saveTimerToPrefs(packageName: String, seconds: Int) {
         getSharedPreferences("PushupsPrefs", Context.MODE_PRIVATE).edit()
             .putInt("timer_$packageName", seconds)
             .apply()
     }
 
-    private fun loadAllTimers() {
+    private fun loadAllTimersFromPrefs() {
         val prefs = getSharedPreferences("PushupsPrefs", Context.MODE_PRIVATE)
         val configStr = prefs.getString("locked_apps_config", "{}") ?: "{}"
         val configJson = JSONObject(configStr)
@@ -209,7 +210,6 @@ class LockerService : Service() {
     }
 
     private fun updateNotification() {
-        val timeLeft = if (lastRealAppPackage != null) appTimers[lastRealAppPackage] ?: -1 else -1
         val message = when {
             isCurrentlyLocked -> "LOCKED! Complete your pushups for $lastRealAppName."
             lastRealAppPackage != null && appTimers.containsKey(lastRealAppPackage) -> {
@@ -217,8 +217,9 @@ class LockerService : Service() {
                 val h = time / 3600
                 val m = (time % 3600) / 60
                 val s = time % 60
-                val timeStr = if (h > 0) String.format("%02d:%02d:%02d", h, m, s) else String.format("%02d:%02d", m, s)
-                val status = if (isCurrentlyInForeground) "Active" else "Paused"
+                val timeStr = if (h > 0) String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s) 
+                              else String.format(Locale.getDefault(), "%02d:%02d", m, s)
+                val status = if (isAppInForeground) "Active" else "Paused"
                 "[$status] $lastRealAppName: $timeStr"
             }
             else -> "Push-to-Unlock: Monitoring..."

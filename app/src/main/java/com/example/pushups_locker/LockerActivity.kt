@@ -35,17 +35,24 @@ class LockerActivity : AppCompatActivity() {
     
     private lateinit var cameraExecutor: ExecutorService
     
+    // Advanced State machine based on industry standards (durareApp & valericaplesu)
     private enum class PushupState {
-        NEEDS_ALIGNMENT,
-        READY_UP,
-        DOWN_POSITION
+        IDLE,           // Looking for person
+        ALIGNING,       // Person found, checking posture
+        READY_UP,       // Arms straight, waiting for descent
+        GOING_DOWN,     // Mid-way down
+        AT_BOTTOM,      // Reached bottom threshold
+        GOING_UP        // Mid-way up
     }
     
-    private var currentState = PushupState.NEEDS_ALIGNMENT
-    private val minConfidence = 0.5f 
+    private var currentState = PushupState.IDLE
+    private val minConfidence = 0.55f 
 
+    // Stability & Smoothing
     private var lastStatus = ""
     private var lastStatusTime = 0L
+    private val angleHistory = mutableListOf<Double>()
+    private val HISTORY_SIZE = 3 // For moving average smoothing
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,7 +110,7 @@ class LockerActivity : AppCompatActivity() {
             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
             detector.process(image)
                 .addOnSuccessListener { pose ->
-                    analyzePose(pose)
+                    analyzePoseAdvanced(pose)
                 }
                 .addOnCompleteListener {
                     imageProxy.close()
@@ -111,14 +118,15 @@ class LockerActivity : AppCompatActivity() {
         }
     }
 
-    private fun analyzePose(pose: Pose) {
+    private fun analyzePoseAdvanced(pose: Pose) {
         val landmarks = pose.getAllPoseLandmarks()
         if (landmarks.isEmpty()) {
-            stableUpdateStatus("Step into camera view")
-            currentState = PushupState.NEEDS_ALIGNMENT
+            stableUpdateStatus("Find a clear space")
+            currentState = PushupState.IDLE
             return
         }
 
+        // Key Landmarks
         val lS = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
         val lE = pose.getPoseLandmark(PoseLandmark.LEFT_ELBOW)
         val lW = pose.getPoseLandmark(PoseLandmark.LEFT_WRIST)
@@ -127,78 +135,99 @@ class LockerActivity : AppCompatActivity() {
         val rW = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
         val lH = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
 
-        if (!isConfident(lS, rS, lE, rE)) {
-            stableUpdateStatus("Make sure your upper body is visible")
-            currentState = PushupState.NEEDS_ALIGNMENT
+        // 1. Confidence Weighting (Technique from durareApp)
+        // Ensure at least one side is visible with high likelihood
+        val leftConfident = isSideConfident(lS, lE, lW)
+        val rightConfident = isSideConfident(rS, rE, rW)
+
+        if (!leftConfident && !rightConfident) {
+            stableUpdateStatus("Show your arms & torso")
+            currentState = PushupState.ALIGNING
             return
         }
 
-        val leftShoulder = lS!!
-        val rightShoulder = rS!!
-        
-        if (lH != null && lH.inFrameLikelihood > minConfidence) {
-            val torsoDx = abs(leftShoulder.position.x - lH.position.x)
-            val torsoDy = abs(leftShoulder.position.y - lH.position.y)
-            val torsoAngle = abs(atan2(torsoDy.toDouble(), torsoDx.toDouble()) * 180 / Math.PI)
+        // 2. Dynamic Posture Check (Very permissive verticality for beginners)
+        if (lS != null && lH != null && lS.inFrameLikelihood > 0.5 && lH.inFrameLikelihood > 0.5) {
+            val dy = abs(lS.position.y - lH.position.y)
+            val dx = abs(lS.position.x - lH.position.x)
+            val angle = abs(atan2(dy.toDouble(), dx.toDouble()) * 180 / Math.PI)
             
-            if (torsoAngle > 65.0) { 
-                stableUpdateStatus("Get closer to a horizontal position")
-                currentState = PushupState.NEEDS_ALIGNMENT
+            if (angle > 70.0) { 
+                stableUpdateStatus("Lean more forward")
                 return
             }
         }
 
-        val leftAngle = if (isConfident(lS, lE, lW)) calculateAngle(leftShoulder, lE!!, lW!!) else null
-        val rightAngle = if (isConfident(rS, rE, rW)) calculateAngle(rightShoulder, rE!!, rW!!) else null
+        // 3. Angle Calculation with Smoothing
+        val leftAngle = if (leftConfident) calculateAngle(lS!!, lE!!, lW!!) else null
+        val rightAngle = if (rightConfident) calculateAngle(rS!!, rE!!, rW!!) else null
         
-        val currentAngle = when {
+        val rawAngle = when {
             leftAngle != null && rightAngle != null -> (leftAngle + rightAngle) / 2
             leftAngle != null -> leftAngle
-            rightAngle != null -> rightAngle
-            else -> {
-                stableUpdateStatus("Show your arms to the camera")
-                return
-            }
+            else -> rightAngle!!
         }
 
+        // Moving Average Smoothing (Standard CV technique)
+        angleHistory.add(rawAngle)
+        if (angleHistory.size > HISTORY_SIZE) angleHistory.removeAt(0)
+        val smoothAngle = angleHistory.average()
+
+        // 4. Advanced State Machine Transitions
+        processStateMachine(smoothAngle)
+    }
+
+    private fun processStateMachine(angle: Double) {
         when (currentState) {
-            PushupState.NEEDS_ALIGNMENT -> {
-                if (currentAngle > 145) { 
+            PushupState.IDLE, PushupState.ALIGNING -> {
+                if (angle > 145) {
                     currentState = PushupState.READY_UP
-                    stableUpdateStatus("Ready! Go down")
+                    stableUpdateStatus("READY! Lower your body")
                 } else {
-                    stableUpdateStatus("Straighten your arms a bit")
+                    stableUpdateStatus("Straighten your arms")
                 }
             }
             PushupState.READY_UP -> {
-                if (currentAngle < 115) { 
-                    currentState = PushupState.DOWN_POSITION
-                    stableUpdateStatus("Good! Now push up")
-                } else {
-                    stableUpdateStatus("Lower your chest...")
+                if (angle < 135) { // Started descent
+                    currentState = PushupState.GOING_DOWN
                 }
             }
-            PushupState.DOWN_POSITION -> {
-                if (currentAngle > 145) { 
+            PushupState.GOING_DOWN -> {
+                if (angle < 115) { // Reached bottom threshold
+                    currentState = PushupState.AT_BOTTOM
+                    stableUpdateStatus("Great! Now push back UP")
+                } else if (angle > 150) { // Aborted
+                    currentState = PushupState.READY_UP
+                }
+            }
+            PushupState.AT_BOTTOM -> {
+                if (angle > 125) { // Started ascent
+                    currentState = PushupState.GOING_UP
+                }
+            }
+            PushupState.GOING_UP -> {
+                if (angle > 145) { // Completed rep
                     runOnUiThread { countPushup() }
                     currentState = PushupState.READY_UP
-                    stableUpdateStatus("Rep counted!")
+                    stableUpdateStatus("Perfect rep!")
+                } else if (angle < 110) { // Went back down
+                    currentState = PushupState.AT_BOTTOM
                 }
             }
         }
+    }
+
+    private fun isSideConfident(s: PoseLandmark?, e: PoseLandmark?, w: PoseLandmark?): Boolean {
+        return s != null && e != null && w != null && 
+               s.inFrameLikelihood > minConfidence && 
+               e.inFrameLikelihood > minConfidence && 
+               w.inFrameLikelihood > minConfidence
     }
 
     private fun dist(a: PoseLandmark, b: PoseLandmark): Float {
         val dx = a.position.x - b.position.x
         val dy = a.position.y - b.position.y
         return sqrt(dx * dx + dy * dy)
-    }
-
-    private fun isConfident(vararg landmarks: PoseLandmark?): Boolean {
-        for (landmark in landmarks) {
-            if (landmark == null || landmark.inFrameLikelihood < minConfidence) return false
-        }
-        return true
     }
 
     private fun stableUpdateStatus(text: String) {

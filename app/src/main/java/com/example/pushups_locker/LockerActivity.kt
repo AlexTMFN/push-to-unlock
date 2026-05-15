@@ -42,9 +42,8 @@ class LockerActivity : AppCompatActivity() {
     }
     
     private var currentState = PushupState.NEEDS_ALIGNMENT
-    private val minConfidence = 0.65f
+    private val minConfidence = 0.5f 
 
-    // For status stability
     private var lastStatus = ""
     private var lastStatusTime = 0L
 
@@ -127,50 +126,28 @@ class LockerActivity : AppCompatActivity() {
         val rE = pose.getPoseLandmark(PoseLandmark.RIGHT_ELBOW)
         val rW = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
         val lH = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
-        val rH = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
 
-        // 1. Basic Confidence Check (Umeri + Hips required for orientation)
-        if (!isConfident(lS, rS, lH, rH)) {
-            stableUpdateStatus("Make sure your full body is visible")
+        if (!isConfident(lS, rS, lE, rE)) {
+            stableUpdateStatus("Make sure your upper body is visible")
             currentState = PushupState.NEEDS_ALIGNMENT
             return
         }
 
         val leftShoulder = lS!!
         val rightShoulder = rS!!
-        val leftHip = lH!!
-
-        // 2. Anti-Air/Wall Logic: Validate Vertical Orientation
-        // Calculate angle of the torso line relative to horizontal
-        val torsoDx = abs(leftShoulder.position.x - leftHip.position.x)
-        val torsoDy = abs(leftShoulder.position.y - leftHip.position.y)
-        val torsoAngle = abs(atan2(torsoDy.toDouble(), torsoDx.toDouble()) * 180 / Math.PI)
         
-        // Anti-air: if doing vertical movements while standing
-        if (torsoAngle > 50.0) {
-            stableUpdateStatus("Get on the floor! Standing not allowed")
-            currentState = PushupState.NEEDS_ALIGNMENT
-            return
-        }
-
-        // 3. Hands Check: Hands must be lower than shoulders (screen Y increases downward)
-        if (lW != null && rW != null) {
-            if (lW.position.y < leftShoulder.position.y || rW.position.y < rightShoulder.position.y) {
-                stableUpdateStatus("Keep your hands on the floor")
+        if (lH != null && lH.inFrameLikelihood > minConfidence) {
+            val torsoDx = abs(leftShoulder.position.x - lH.position.x)
+            val torsoDy = abs(leftShoulder.position.y - lH.position.y)
+            val torsoAngle = abs(atan2(torsoDy.toDouble(), torsoDx.toDouble()) * 180 / Math.PI)
+            
+            if (torsoAngle > 65.0) { 
+                stableUpdateStatus("Get closer to a horizontal position")
                 currentState = PushupState.NEEDS_ALIGNMENT
                 return
             }
         }
 
-        // 4. Distance Check (Scale)
-        val bodyScale = dist(leftShoulder, leftHip)
-        if (bodyScale < 140) { 
-            stableUpdateStatus("Move further from the camera")
-            currentState = PushupState.NEEDS_ALIGNMENT
-            return
-        }
-
-        // 5. Calculate Elbow Angles
         val leftAngle = if (isConfident(lS, lE, lW)) calculateAngle(leftShoulder, lE!!, lW!!) else null
         val rightAngle = if (isConfident(rS, rE, rW)) calculateAngle(rightShoulder, rE!!, rW!!) else null
         
@@ -184,18 +161,17 @@ class LockerActivity : AppCompatActivity() {
             }
         }
 
-        // 6. State Machine for Pushups
         when (currentState) {
             PushupState.NEEDS_ALIGNMENT -> {
-                if (currentAngle > 155) {
+                if (currentAngle > 145) { 
                     currentState = PushupState.READY_UP
                     stableUpdateStatus("Ready! Go down")
                 } else {
-                    stableUpdateStatus("Start with straight arms")
+                    stableUpdateStatus("Straighten your arms a bit")
                 }
             }
             PushupState.READY_UP -> {
-                if (currentAngle < 95) {
+                if (currentAngle < 115) { 
                     currentState = PushupState.DOWN_POSITION
                     stableUpdateStatus("Good! Now push up")
                 } else {
@@ -203,12 +179,10 @@ class LockerActivity : AppCompatActivity() {
                 }
             }
             PushupState.DOWN_POSITION -> {
-                if (currentAngle > 155) {
+                if (currentAngle > 145) { 
                     runOnUiThread { countPushup() }
                     currentState = PushupState.READY_UP
-                    stableUpdateStatus("Perfect! Next one")
-                } else {
-                    stableUpdateStatus("Push all the way up")
+                    stableUpdateStatus("Rep counted!")
                 }
             }
         }
@@ -230,7 +204,7 @@ class LockerActivity : AppCompatActivity() {
     private fun stableUpdateStatus(text: String) {
         if (text == lastStatus) return
         val now = System.currentTimeMillis()
-        if (now - lastStatusTime > 600) { 
+        if (now - lastStatusTime > 400) {
             runOnUiThread { statusText.text = text }
             lastStatus = text
             lastStatusTime = now
